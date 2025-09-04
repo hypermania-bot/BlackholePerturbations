@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <iomanip>
+#include <optional>
 
 
 
@@ -60,5 +61,32 @@ void write_to_filename_template(const thrust::device_vector<ThrustScalar> &obj, 
   gpudirect_write(obj, filename);
 }
 #endif
+
+template<typename ReturnType>
+std::optional<ReturnType> read_from_file(const std::string &filename) {
+  std::ifstream file(filename, std::ios::in | std::ios::binary | std::ios::ate);
+  if(file.is_open()) {
+    const std::streampos size = file.tellg();
+    file.seekg(0, std::ios::beg);
+    
+    // Assume ReturnType consists of double by default
+    constexpr size_t elem_size = sizeof(decltype(ReturnType()[0]));
+    // std::cout << "(read_from_file) deduced elem_size = " << elem_size << std::endl;
+    const size_t obj_size = (static_cast<size_t>(size) + elem_size - 1) / elem_size;
+    std::optional<ReturnType> result{ReturnType(obj_size)};
+    file.read(reinterpret_cast<char *>(result->data()), size);
+    return result;
+  } else {
+    return std::optional<ReturnType>();
+  }
+}
+
+template<typename ReturnType>
+std::optional<ReturnType> read_from_file_template(const std::string &format_string, const int idx) {
+  char filename[128];
+  sprintf(filename, format_string.data(), idx);
+  return read_from_file<ReturnType>(filename);
+}
+
 
 #endif

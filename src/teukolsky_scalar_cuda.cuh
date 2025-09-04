@@ -33,11 +33,6 @@ struct CudaTeukolskyScalarPDE {
   typedef thrust::device_vector<double> Vector;
   typedef thrust::device_vector<thrust::complex<double>> ComplexVector;
 
-  // typedef boost::multiprecision::cpp_bin_float_100 HighPrecisionScalar;
-  // typedef std::complex<HighPrecisionScalar> HighPrecisionComplex;
-  // typedef Eigen::Array<HighPrecisionScalar, -1, 1> HighPrecisionVector;
-  // typedef Eigen::Array<HighPrecisionComplex, -1, 1> HighPrecisionComplexVector;
-
   typedef Teukolsky::HighPrecisionScalar HighPrecisionScalar;
   typedef Teukolsky::HighPrecisionComplex HighPrecisionComplex;
   typedef Teukolsky::HighPrecisionVector HighPrecisionVector;
@@ -51,11 +46,11 @@ struct CudaTeukolskyScalarPDE {
   long long int grid_size;
   long long int lm_size;
 
-  typedef Teukolsky::CouplingInfo CouplingInfo;
-  CouplingInfo psi_lm_map;
-  CouplingInfo dr_psi_lm_map;
-  CouplingInfo drdr_psi_lm_map;
-  CouplingInfo dt_psi_lm_map;
+  //typedef Teukolsky::CouplingInfo CouplingInfo;
+  Teukolsky::CouplingInfo psi_lm_map;
+  Teukolsky::CouplingInfo dr_psi_lm_map;
+  Teukolsky::CouplingInfo drdr_psi_lm_map;
+  Teukolsky::CouplingInfo dt_psi_lm_map;
 
   std::vector<ComplexVector> coeffs;
   ComplexVector drdr_psi_lm;
@@ -63,9 +58,14 @@ struct CudaTeukolskyScalarPDE {
 
   // CUDA graph instances for evaluating the system ( used in operator() )
   std::map<std::pair<const void *, const void *>, cudaGraphExec_t> graph_exec_mapping;
+
+  std::vector<ComplexVector> lambda_coeffs;
+  ComplexVector psi_sqr_lm;
+
+  std::map<std::pair<const void *, const void *>, cudaGraphExec_t> lambda_graph_exec_mapping;
   
   CudaTeukolskyScalarPDE(Param param_);
-  // ~CudaTeukolskyScalarPDE();
+
 
   /*!
     \brief The function called by odeint library.
@@ -76,6 +76,7 @@ struct CudaTeukolskyScalarPDE {
   void operator()(const State &x, State &dxdt, const Scalar t);
   
   cudaGraph_t prepare_cuda_graph(const State &x, State &dxdt);
+  cudaGraph_t prepare_lambda_cuda_graph(const State &x, State &dxdt);
 
 };
 

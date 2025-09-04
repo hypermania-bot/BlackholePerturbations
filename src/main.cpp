@@ -4,6 +4,7 @@
 #include <typeinfo>
 //#include <thread>
 #include <random>
+#include <optional>
 
 #include <Eigen/Dense>
 #include <boost/numeric/odeint.hpp>
@@ -11,7 +12,8 @@
 #include "odeint_eigen/eigen_operations.hpp"
 
 #include <boost/multiprecision/cpp_bin_float.hpp>
-//#include <boost/lockfree/queue.hpp>
+#include <boost/lockfree/queue.hpp>
+#include <thread>
 
 #include "utility.hpp"
 #include "param.hpp"
@@ -30,18 +32,19 @@
 
 #include "examples.hpp"
 #include "rsh.hpp"
+#include "sph.hpp"
 
-//#ifndef DISABLE_CUDA
 #include <thrust/device_vector.h>
 #include "cuda_wrapper.cuh"
 #include "odeint_thrust/thrust.hpp"
-//#endif
+#include "pde_cuda_kernel.cuh"
+#include "asset.hpp"
 
 void run_teukolsky(void);
 void run_teukolsky_benchmark(void);
-void test_cuda_graph(void);
-//int test_cuda_gpudirect(const thrust::device_vector<thrust::complex<double>> &vec);
-void test_teukolsky_cuda(void);
+// void test_cuda_graph(void);
+// void test_cuda(void);
+// void test_teukolsky_cuda(void);
 
 
 namespace Random
@@ -71,16 +74,104 @@ namespace Random
 }
 
 
-
 int main(int argc, char **argv) {
-  // CudaTeukolskyScalarPDE::State to_read;
-  // gpudirect_read(to_read, "testfile_gpudirect");
-  // gpudirect_write(to_read, "testfile_gpudirect_2");
-
-  // profile_function(10000, [&](void){ gpudirect_write(to_read, "testfile_gpudirect_2"); });
-  
+  // const long long int l_max = 5;
+  // const long long int lm_size = (l_max + 1) * (l_max + 1);
+  // SPH::CouplingInfo info = SPH::make_coupling_info_map(l_max, {0, 6, 20, 42, 72, 110});
+  // // SPH::CouplingInfo info = SPH::make_coupling_info_map(l_max);
+  // for(size_t lm = 0; lm < lm_size; ++lm){
+  //   std::cout << "info[" << lm << "].size() = " << info[lm].size() << std::endl;
+  // }
   // return 0;
+  // test_harmonic_mult();
 
+
+  auto run_simulation = [&](const double a_over_M, const double lambda, const std::string &dir) {
+    using namespace Eigen;
+    using namespace boost::numeric::odeint;
+    using namespace std::numbers;
+    using std::array;
+  
+    typedef CudaTeukolskyScalarPDE Equation;
+    typedef Equation::Param Param;
+    typedef Equation::State State;
+
+    // const std::string dir = "output/teukolsky_09/";
+    // const std::string dir = "output/teukolsky_a_01_lambda_01/";
+    const std::string temporary_dir = "asset/";
+    // const std::string temporary_dir = "/media/hypermania/Drive_001/QuasiNormalModes/output/";
+    prepare_directory_for_output(dir);
+    prepare_directory_for_output(temporary_dir);
+    Asset::set_asset_path(temporary_dir);
+  
+    Param param;
+    param.s = 0;
+    param.l_max = 5;
+    param.M = 0.5;
+    param.a = a_over_M * param.M;
+    param.lambda = lambda;
+
+    param.rast_min = -500;
+    param.rast_max = 1000;
+    param.N = static_cast<long long int>((param.rast_max - param.rast_min) / 0.03);
+  
+    param.t_start = 0;
+    param.t_end = 1000;
+    param.t_interval = 0.5;
+    param.delta_t = 0.01;
+
+    save_param_for_Mathematica(param, dir);
+  
+    Equation eqn(param);
+
+    auto stepper = runge_kutta_fehlberg78<State, double, State, double>();
+
+    const long long int rIdx = r_ast_to_i(param.rast_min, param.rast_max, param.N, 50.0);
+    auto recorder = ThrustRecorder(rIdx, eqn.lm_size, eqn.grid_size);
+    auto observer1 = DenseTransformAndRecordObserver(dir, recorder);
+    std::vector<double> times;
+    for(size_t i = 0; i <= 20; ++i){
+      times.push_back(50.0 * i);
+    }
+    auto observer2 = ApproximateTimeObserver(dir, times);
+    auto observer = ObserverPack(observer1, observer2);
+  
+    State state(2 * eqn.lm_size * eqn.grid_size);
+    ArrayXcd state_eigen(state.size());
+    state_eigen = 0;
+
+    ArrayXd r_ast(eqn.grid_size);
+    for(int i = 0; i < eqn.grid_size; ++i) {
+      r_ast[i] = i_to_r_ast(param.rast_min, param.rast_max, param.N, i);
+    }
+
+    const double r_source = 50;
+    const double sigma = 0.5;
+    const long long int grid_begin = RSH::lm_to_idx(1, 1) * eqn.grid_size;
+    //const std::complex<double> phase_factor = exp(std::complex<double>(0.0, 1.0) * Random::generate_random_angle());
+    state_eigen(seqN(grid_begin, eqn.grid_size)) = pow(2 * pi, -0.5) * (1 / sigma) * exp(-(r_ast - r_source)*(r_ast - r_source) / (2 * sigma * sigma));
+    state_eigen(seqN(eqn.grid_size * eqn.lm_size + grid_begin, eqn.grid_size)) = - pow(2 * pi, -0.5) * pow(sigma, -3) * exp(-(r_ast - r_source)*(r_ast - r_source) / (2 * sigma * sigma)) * (r_ast - r_source);
+
+    copy_vector(state, state_eigen);
+
+
+  
+    // // Solve the equation.
+    run_and_measure_time("Solving equation",
+			 [&](){
+			   int num_steps = integrate_adaptive(stepper, std::ref(eqn), state, param.t_start, param.t_end, param.delta_t, std::ref(observer));
+			   std::cout << "total number of steps = " << num_steps << '\n';
+			 } );
+    write_to_file(state, dir + "final_state.dat");
+    observer.save();
+  };
+
+  // run_simulation(0.01, 0.1, "output/teukolsky_a_001_lambda_01/");
+  run_simulation(0.1, 0.001, "output/teukolsky_a_01_lambda_0001/");
+  run_simulation(0.9, 0.001, "output/teukolsky_a_09_lambda_0001/");
+  run_simulation(0.99, 0, "output/teukolsky_099/");
+
+  return 0;
   
   using namespace Eigen;
   using namespace boost::numeric::odeint;
@@ -91,18 +182,24 @@ int main(int argc, char **argv) {
   typedef Equation::Param Param;
   typedef Equation::State State;
 
-  const std::string dir = "output/test_teukolsky_cuda/";
+  // const std::string dir = "output/teukolsky_09/";
+  const std::string dir = "output/teukolsky_a_01_lambda_01/";
+  const std::string temporary_dir = "asset/";
+  // const std::string temporary_dir = "/media/hypermania/Drive_001/QuasiNormalModes/output/";
   prepare_directory_for_output(dir);
+  prepare_directory_for_output(temporary_dir);
+  Asset::set_asset_path(temporary_dir);
   
   Param param;
   param.s = 0;
   param.l_max = 5;
   param.M = 0.5;
-  param.a = 0.9 * param.M;
+  param.a = 0.1 * param.M;
+  param.lambda = 0.1;
 
   param.rast_min = -500;
   param.rast_max = 1000;
-  param.N = static_cast<long long int>((param.rast_max - param.rast_min) / 0.03); //1000;
+  param.N = static_cast<long long int>((param.rast_max - param.rast_min) / 0.03);
   
   param.t_start = 0;
   param.t_end = 1000;
@@ -110,21 +207,19 @@ int main(int argc, char **argv) {
   param.delta_t = 0.01;
 
   save_param_for_Mathematica(param, dir);
-
+  
   Equation eqn(param);
 
-  // typedef TeukolskyScalarPDE CPUEquation;
-  // CPUEquation eqn_cpu(param);
-
   auto stepper = runge_kutta_fehlberg78<State, double, State, double>();
-
 
   const long long int rIdx = r_ast_to_i(param.rast_min, param.rast_max, param.N, 50.0);
   auto recorder = ThrustRecorder(rIdx, eqn.lm_size, eqn.grid_size);
   auto observer1 = DenseTransformAndRecordObserver(dir, recorder);
-  
-  auto observer2 = ApproximateTimeObserver(dir, {0., 10., 20., 30., 40., 50., 60., 70., 80., 90., 100., 110., 120., 130., 140., 150., 160., 170., 180., 190., 200.});
-  
+  std::vector<double> times;
+  for(size_t i = 0; i <= 20; ++i){
+    times.push_back(50.0 * i);
+  }
+  auto observer2 = ApproximateTimeObserver(dir, times);
   auto observer = ObserverPack(observer1, observer2);
   
   State state(2 * eqn.lm_size * eqn.grid_size);
@@ -143,10 +238,10 @@ int main(int argc, char **argv) {
   state_eigen(seqN(grid_begin, eqn.grid_size)) = pow(2 * pi, -0.5) * (1 / sigma) * exp(-(r_ast - r_source)*(r_ast - r_source) / (2 * sigma * sigma));
   state_eigen(seqN(eqn.grid_size * eqn.lm_size + grid_begin, eqn.grid_size)) = - pow(2 * pi, -0.5) * pow(sigma, -3) * exp(-(r_ast - r_source)*(r_ast - r_source) / (2 * sigma * sigma)) * (r_ast - r_source);
 
-  
   copy_vector(state, state_eigen);
 
 
+  
   // // Solve the equation.
   run_and_measure_time("Solving equation",
 		       [&](){
@@ -156,12 +251,6 @@ int main(int argc, char **argv) {
   write_to_file(state, dir + "final_state.dat");
   observer.save();
   
-  // run_teukolsky();
-  
-  
-  //run_coupled_eqn();
-  //run_sourced_eqn();
-
   return 0;
 }
 
@@ -252,7 +341,7 @@ void run_teukolsky(void) {
   using namespace std::numbers;
   using std::array;
 
-  const std::string dir = "output/test_teukolsky/";
+  const std::string dir = "output/test_teukolsky_nan/";
   prepare_directory_for_output(dir);
 
   typedef TeukolskyScalarPDE Equation;
@@ -260,37 +349,41 @@ void run_teukolsky(void) {
   typedef Equation::State State;
   
   Param param;
-  param.s = 0; //.convert_to<double>();
-  param.l_max = 3; //.convert_to<double>();
-  param.M = 0.5;
-  param.a = param.M * 0.9;
+  // param.s = 0; //.convert_to<double>();
+  // param.l_max = 3; //.convert_to<double>();
+  // param.M = 0.5;
+  // param.a = param.M * 0.9;
 
-  param.rast_min = -50;
-  param.rast_max = 125;
-  param.N = static_cast<long long int>((param.rast_max - param.rast_min) / 0.03); //1000;
+  // param.rast_min = -50;
+  // param.rast_max = 125;
+  // param.N = static_cast<long long int>((param.rast_max - param.rast_min) / 0.03); //1000;
   
-  param.t_start = 0; //.convert_to<double>();
-  param.t_end = 100; //.convert_to<double>();
+  // param.t_start = 0; //.convert_to<double>();
+  // param.t_end = 100; //.convert_to<double>();
+  // param.t_interval = 0.5;
+  // param.delta_t = 0.01; //.convert_to<double>();
+
+  param.s = 0;
+  param.l_max = 5;
+  param.M = 0.5;
+  param.a = 0.9 * param.M;
+
+  param.rast_min = -500;
+  param.rast_max = 1000;
+  param.N = static_cast<long long int>((param.rast_max - param.rast_min) / 0.03);
+  
+  param.t_start = 0;
+  param.t_end = 250;
   param.t_interval = 0.5;
-  param.delta_t = 0.01; //.convert_to<double>();
+  param.delta_t = 0.01;
 
   save_param_for_Mathematica(param, dir);
 
   Equation eqn(param);
-
-  std::cout << "point 0" << std::endl;
-
-  // {
-  //   for(auto [lm1, idx1] : eqn.drdr_psi_lm_map[3]){
-  //     std::cout << "lm1, idx1 = " << lm1 << ", " << idx1 << std::endl;
-  //     std::cout << eqn.coeffs[idx1](Eigen::seqN(2000, 50)).transpose() << std::endl;
-  //   }
-  // }
-  // exit(0);
   
   auto stepper = runge_kutta_fehlberg78<State, double, State, double>();
 
-  const long long int rIdx = r_ast_to_i(param.rast_min, param.rast_max, param.N, 25.0);
+  const long long int rIdx = r_ast_to_i(param.rast_min, param.rast_max, param.N, 50.0);
   std::cout << "using rIdx = " << rIdx << std::endl;
   std::vector<long long int> positions;
   for(int i = 0; i < 2 * eqn.lm_size; ++i) {
@@ -299,7 +392,8 @@ void run_teukolsky(void) {
   auto observer1 = GenericFixedPositionObserver<State>(dir, positions);
   
   // auto observer2 = ApproximateTimeObserver(dir, {50., 100., 150., 200., 250., 300., 350., 400., 450., 500., 550.});
-  auto observer2 = ApproximateTimeObserver(dir, {10., 20., 30., 40.});
+  //auto observer2 = ApproximateTimeObserver(dir, {10., 20., 30., 40.});
+  auto observer2 = ApproximateTimeObserver(dir, {0., 10., 20., 30., 40., 50., 60., 70., 80., 90., 100., 110., 120., 130., 140., 150., 160., 170., 180., 190., 200.});
   auto observer = ObserverPack(observer1, observer2);
   
 
@@ -312,9 +406,9 @@ void run_teukolsky(void) {
     r_ast[i] = i_to_r_ast(param.rast_min, param.rast_max, param.N, i);
   }
 
-  const double r_source = 25;
+  const double r_source = 50;
   const double sigma = 0.5;
-  const long long int grid_begin = RSH::lm_to_idx(2, 2) * eqn.grid_size;
+  const long long int grid_begin = RSH::lm_to_idx(1, 1) * eqn.grid_size;
   state(seqN(grid_begin, eqn.grid_size)) = pow(2 * pi, -0.5) * (1 / sigma) * exp(-(r_ast - r_source)*(r_ast - r_source) / (2 * sigma * sigma));
   state(seqN(eqn.grid_size * eqn.lm_size + grid_begin, eqn.grid_size)) = - pow(2 * pi, -0.5) * pow(sigma, -3) * exp(-(r_ast - r_source)*(r_ast - r_source) / (2 * sigma * sigma)) * (r_ast - r_source);
 

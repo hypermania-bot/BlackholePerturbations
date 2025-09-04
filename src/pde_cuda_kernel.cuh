@@ -29,6 +29,10 @@ namespace CUDAKernel {
     
    */
   extern const std::vector<FunctionPointer> assign_lhs_2terms_complex_double_kernels;
+
+  extern const std::vector<FunctionPointer> assign_coeff_lhs_2terms_complex_double_kernels;
+  extern const std::vector<FunctionPointer> accum_coeff_lhs_2terms_complex_double_kernels;
+
 }
 
 #endif

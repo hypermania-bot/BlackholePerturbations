@@ -26,8 +26,8 @@ NVCC := $(CUDA_PATH)/bin/nvcc -ccbin $(HOST_COMPILER)
 NVCCFLAGS   := -m64 --threads 2
 
 # Gencode arguments
-# Use 86 for RTX 3060 Ti. Change this for other GPUs / CUDA Toolkit version.
-SMS ?= 86 # 50 52 60 61 70 75 80 86
+# Use 86 for RTX 3060 Ti and 89 for RTX 4080. Change this for other GPUs / CUDA Toolkit version.
+SMS ?= 89 # 50 52 60 61 70 75 80 86
 
 ifeq ($(SMS),)
 	$(info >>> WARNING - no SM architectures have been specified - waiving sample <<<)
@@ -75,7 +75,7 @@ device_link_OBJ := $(src_DIR)/device_link.o
 ifeq ($(disable-cuda),false)
 	program_INCLUDE_DIRS += $(CUDA_INCLUDE_DIR)
 	program_LIBRARY_DIRS += $(CUDA_LIBRARY_DIR)
-	program_LIBRARIES += cudart cufft_static culibos cufile
+	program_LIBRARIES += cudart_static cufft_static culibos cufile rt
 	program_OBJS += $(program_CU_OBJS) $(device_link_OBJ)
 else
 	CXXFLAGS += -D DISABLE_CUDA
@@ -87,15 +87,15 @@ endif
 CXXFLAGS += $(foreach includedir,$(program_INCLUDE_DIRS),-I$(includedir))
 CXXFLAGS += -std=c++20 -Wall -DEIGEN_DONT_PARALLELIZE -DEIGEN_NO_CUDA -ftemplate-depth=20000
 #-fext-numeric-literals  	#-DEIGEN_HAS_CONSTEXPR=1 #-DEIGEN_NO_DEBUG
-#CXXFLAGS += -march=alderlake -pthread
-CXXFLAGS += -march=native -pthread
+CXXFLAGS += -march=alderlake -pthread
+#CXXFLAGS += -march=native -pthread
 CXXFLAGS += -O3 -ffast-math
 #CXXFLAGS += -g -fno-omit-frame-pointer -fext-numeric-literals
 CXXFLAGS += -DNDEBUG
 
-NVCC_OPTIMIZE_FLAGS := -use_fast_math # -Xptxas -O3,-v
+NVCC_OPTIMIZE_FLAGS := --ftz=false
 NVCC_INCLUDE_DIR_FLAGS += $(foreach includedir,$(program_INCLUDE_DIRS),-I$(includedir))
-NVCCFLAGS += -std=c++20 -DCUDA_API_PER_THREAD_DEFAULT_STREAM -DEIGEN_NO_CUDA 
+NVCCFLAGS += -std=c++20 -DCUDA_API_PER_THREAD_DEFAULT_STREAM -DEIGEN_NO_CUDA
 NVCCFLAGS += $(foreach library,$(program_LIBRARIES),-l$(library))
 
 
@@ -133,6 +133,10 @@ clean:
 	$(RM) $(program_CXX_ASMS)
 	$(RM) $(wildcard *~)
 	$(RM) -r html latex
+
+cudaclean:
+	$(RM) $(program_CU_OBJS)
+	$(RM) $(device_link_OBJ)
 
 distclean: clean
 

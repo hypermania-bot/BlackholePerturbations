@@ -57,7 +57,7 @@ struct QuasiNormalModePDEPrecise {
     const auto s = param.s;
     const auto l = param.l;
     
-    const Scalar h = (r_max - r_min) / (N - 1);
+    // const Scalar h = (r_max - r_min) / (N - 1);
 
     /*
     V.resize(N+1);

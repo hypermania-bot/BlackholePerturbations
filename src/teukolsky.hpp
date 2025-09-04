@@ -26,7 +26,8 @@ namespace Teukolsky
   typedef Eigen::Array<Scalar, -1, 1> Vector;
   typedef Eigen::Array<ComplexScalar, -1, 1> ComplexVector;
   
-  typedef boost::multiprecision::cpp_bin_float_100 HighPrecisionScalar;
+  //typedef boost::multiprecision::cpp_bin_float_100 HighPrecisionScalar;
+  typedef boost::multiprecision::number<boost::multiprecision::cpp_bin_float<2000>> HighPrecisionScalar;
   typedef std::complex<HighPrecisionScalar> HighPrecisionComplex;
   typedef Eigen::Array<HighPrecisionScalar, -1, 1> HighPrecisionVector;
   typedef Eigen::Array<HighPrecisionComplex, -1, 1> HighPrecisionComplexVector;
