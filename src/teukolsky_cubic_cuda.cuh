@@ -1,5 +1,5 @@
 /*! 
-  \file teukolsky_scalar_cuda.cuh
+  \file teukolsky_cubic_cuda.cuh
   \author Siyang Ling
   \brief Header for Teukolsky equations that runs on the GPU.
 

@@ -33,12 +33,12 @@ namespace Teukolsky
   typedef Eigen::Array<HighPrecisionComplex, -1, 1> HighPrecisionComplexVector;
 
   typedef std::vector<std::unordered_map<long long int, long long int>> CouplingInfo;
-  typedef std::vector<std::vector<std::pair<long long int, long long int>>> CouplingInfoFlat;
+  typedef std::vector<std::vector<std::vector<std::pair<long long int, long long int>>>> CouplingInfoFlat;
   
   /*!
     \brief Given info for all lm -> (lm1, coeff_idx), use cutoff l_max, keep only terms with lm and lm1 below cutoff.
   */
-  CouplingInfo make_coupling_info_map(const CouplingInfoFlat &info, const long long int l_max);
+  CouplingInfo make_coupling_info_map(const CouplingInfoFlat &info, const long long int s, const long long int l_max);
   
   Vector compute_r_vector(const Scalar rast_min, const Scalar rast_max, const long long int N, const Scalar M, const Scalar a);
 

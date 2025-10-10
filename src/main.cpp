@@ -28,7 +28,7 @@
 #include "boost/type_index.hpp"
 
 #include "teukolsky_scalar.hpp"
-#include "teukolsky_scalar_cuda.cuh"
+#include "teukolsky_cubic_cuda.cuh"
 
 #include "examples.hpp"
 #include "rsh.hpp"
@@ -86,7 +86,7 @@ int main(int argc, char **argv) {
   // test_harmonic_mult();
 
 
-  auto run_simulation = [&](const double a_over_M, const double lambda, const std::string &dir) {
+  auto run_simulation = [&](const long long int s, const double a_over_M, const double lambda, const std::string &dir) {
     using namespace Eigen;
     using namespace boost::numeric::odeint;
     using namespace std::numbers;
@@ -99,24 +99,24 @@ int main(int argc, char **argv) {
     // const std::string dir = "output/teukolsky_09/";
     // const std::string dir = "output/teukolsky_a_01_lambda_01/";
     const std::string temporary_dir = "asset/";
-    // const std::string temporary_dir = "/media/hypermania/Drive_001/QuasiNormalModes/output/";
+    // const std::string temporary_dir = "/media/hypermania/Drive_001/QuasiNormalModes/asset/";
     prepare_directory_for_output(dir);
     prepare_directory_for_output(temporary_dir);
     Asset::set_asset_path(temporary_dir);
   
     Param param;
-    param.s = 0;
-    param.l_max = 5;
+    param.s = s;
+    param.l_max = 1;
     param.M = 0.5;
     param.a = a_over_M * param.M;
     param.lambda = lambda;
 
-    param.rast_min = -500;
-    param.rast_max = 1000;
+    param.rast_min = -750;
+    param.rast_max = 1500;
     param.N = static_cast<long long int>((param.rast_max - param.rast_min) / 0.03);
   
     param.t_start = 0;
-    param.t_end = 1000;
+    param.t_end = 1500;
     param.t_interval = 0.5;
     param.delta_t = 0.01;
 
@@ -124,14 +124,15 @@ int main(int argc, char **argv) {
   
     Equation eqn(param);
 
-    auto stepper = runge_kutta_fehlberg78<State, double, State, double>();
+    // auto stepper = runge_kutta_fehlberg78<State, double, State, double>();
+    auto stepper = runge_kutta_dopri5<State, double, State, double>();
 
     const long long int rIdx = r_ast_to_i(param.rast_min, param.rast_max, param.N, 50.0);
     auto recorder = ThrustRecorder(rIdx, eqn.lm_size, eqn.grid_size);
     auto observer1 = DenseTransformAndRecordObserver(dir, recorder);
     std::vector<double> times;
-    for(size_t i = 0; i <= 20; ++i){
-      times.push_back(50.0 * i);
+    for(size_t i = 0; i <= 10; ++i){
+      times.push_back(150.0 + 5.0 * i);
     }
     auto observer2 = ApproximateTimeObserver(dir, times);
     auto observer = ObserverPack(observer1, observer2);
@@ -166,10 +167,28 @@ int main(int argc, char **argv) {
     observer.save();
   };
 
-  // run_simulation(0.01, 0.1, "output/teukolsky_a_001_lambda_01/");
-  run_simulation(0.1, 0.001, "output/teukolsky_a_01_lambda_0001/");
-  run_simulation(0.9, 0.001, "output/teukolsky_a_09_lambda_0001/");
-  run_simulation(0.99, 0, "output/teukolsky_099/");
+  // run_simulation(0, 0.01, 0.1, "output/teukolsky_a_001_lambda_01/");
+  // run_simulation(0, 0.1, 0.001, "output/teukolsky_a_01_lambda_0001/");
+  // run_simulation(0, 0.9, 0.001, "output/teukolsky_a_09_lambda_0001/");
+  // run_simulation(0, 0.99, 0, "output/teukolsky_099/");
+  // run_simulation(1, 0, 0, "output/teukolsky_s_1_a_0_lambda_0/");
+  // run_simulation(1, 0.5, 0, "output/teukolsky_s_1_a_05_lambda_0/");
+  // run_simulation(0, 0.1, 0, "output/teukolsky_s_0_a_01_lambda_0/");
+  // run_simulation(0, 0.1, 0, "/media/hypermania/Drive_001/QuasiNormalModes/output/teukolsky_s_0_a_01_lambda_0/");
+  // run_simulation(1, 0.1, 0, "/media/hypermania/Drive_001/QuasiNormalModes/output/teukolsky_s_1_a_01_lambda_0_short_lmax_3/");
+
+  // run_simulation(1, 0.1, 0, "output/teukolsky_s_1_a_01_lambda_0_short/");
+  // run_simulation(2, 0.1, 0, "/media/hypermania/Drive_001/QuasiNormalModes/output/teukolsky_s_2_a_01_lambda_0/");
+  // run_simulation(2, 0.1, 0.1, "/media/hypermania/Drive_001/QuasiNormalModes/output/teukolsky_s_2_a_01_lambda_01/");
+  
+  // run_simulation(-1, 0.1, 0, "output/teukolsky_s_1_a_01_lambda_0_close/");
+  run_simulation(-1, 0, 0, "output/teukolsky_s_1_a_0_lambda_0_close/");
+  // run_simulation(0, 0.1, 0, "/media/hypermania/Drive_001/QuasiNormalModes/output/teukolsky_s_0_a_01_lambda_0_close/");
+  // run_simulation(-1, 0.1, 0.1, "/media/hypermania/Drive_001/QuasiNormalModes/output/teukolsky_s_1_a_01_lambda_01/");
+  // run_simulation(-2, 0.1, 0.1, "output/teukolsky_s_2_a_01_lambda_01/");
+  // run_simulation(-1, 0.1, 0.1, "output/teukolsky_s_1_a_01_lambda_01_fine/");
+  
+  // run_simulation(-2, 0.1, 0, "/media/hypermania/Drive_001/QuasiNormalModes/output/teukolsky_s_2_a_01_lambda_0/");
 
   return 0;
   

@@ -6,16 +6,19 @@
 #include "teukolsky.gen"
 #include "io.hpp"
 #include "asset.hpp"
+#include "utility.hpp"
 
 namespace Teukolsky
 {
-
-  CouplingInfo make_coupling_info_map(const std::vector<std::vector<std::pair<long long int, long long int>>> &info, const long long int l_max) {
+  // std::vector<std::vector<std::pair<long long int, long long int>>>
+  // CouplingInfo make_coupling_info_map(const CouplingInfoFlat &info, const long long int l_max)
+  CouplingInfo make_coupling_info_map(const CouplingInfoFlat &info, const long long int s, const long long int l_max) {
     const long long int lm_size = (l_max + 1) * (l_max + 1);
+    const long long int s_max = 2;
     CouplingInfo result;
     result.resize(lm_size);
     for(int idx = 0; idx < lm_size; ++idx){
-      for(auto p : info[idx]){
+      for(auto p : info[s-(-s_max)][idx]){
 	auto [idx1, coeff1] = p;
 	if(idx1 < lm_size){
 	  result[idx][idx1] = coeff1;
@@ -177,11 +180,15 @@ namespace Teukolsky
       if(r_hp_loaded.has_value()){
 	r_hp = *r_hp_loaded;
       } else {
-	r_hp = compute_hp_r_vector(rast_min_hp, rast_max_hp, N, M_hp, a_hp);
+	run_and_measure_time("Computing r_hp", [&](void){
+	  r_hp = compute_hp_r_vector(rast_min_hp, rast_max_hp, N, M_hp, a_hp);
+	});
 	write_to_file(r_hp, r_hp_filename);
       }
-
-      coeffs_temp = compute_coeffs_scalar(a_hp, M_hp, r_hp);
+      
+      run_and_measure_time("Computing coeffs_temp", [&](void){
+	coeffs_temp = compute_coeffs_scalar(a_hp, M_hp, r_hp);
+      });
       ComplexVector to_save(coeffs_temp.size() * (N+1));
       for(size_t i = 0; i < coeffs_temp.size(); ++i) {
 	to_save(Eigen::seqN((N+1)*i, N+1)) = coeffs_temp[i];

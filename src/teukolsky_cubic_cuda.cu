@@ -1,4 +1,4 @@
-#include "teukolsky_scalar_cuda.cuh"
+#include "teukolsky_cubic_cuda.cuh"
 #include "cuda_wrapper.cuh"
 #include "pde_cuda_kernel.cuh"
 #include "sph.hpp"
@@ -33,10 +33,10 @@ CudaTeukolskyScalarPDE::CudaTeukolskyScalarPDE(Param param_) : param(param_) {
   const Scalar h = (rast_max - rast_min) / (N - 1);
 
   // Load coupling mapping info
-  psi_lm_map = Teukolsky::make_coupling_info_map(Teukolsky::psi_lm_coupling_info_scalar, l_max);
-  dr_psi_lm_map = Teukolsky::make_coupling_info_map(Teukolsky::dr_psi_lm_coupling_info_scalar, l_max);
-  drdr_psi_lm_map = Teukolsky::make_coupling_info_map(Teukolsky::drdr_psi_lm_coupling_info_scalar, l_max);
-  dt_psi_lm_map = Teukolsky::make_coupling_info_map(Teukolsky::dt_psi_lm_coupling_info_scalar, l_max);
+  psi_lm_map = Teukolsky::make_coupling_info_map(Teukolsky::psi_lm_coupling_info_scalar, s, l_max);
+  dr_psi_lm_map = Teukolsky::make_coupling_info_map(Teukolsky::dr_psi_lm_coupling_info_scalar, s, l_max);
+  drdr_psi_lm_map = Teukolsky::make_coupling_info_map(Teukolsky::drdr_psi_lm_coupling_info_scalar, s, l_max);
+  dt_psi_lm_map = Teukolsky::make_coupling_info_map(Teukolsky::dt_psi_lm_coupling_info_scalar, s, l_max);
 
   // Compute the radial coordinate and coupling coefficients
   std::cout << "(CudaTeukolskyScalarPDE) Preparing coupling coefficients" << std::endl;

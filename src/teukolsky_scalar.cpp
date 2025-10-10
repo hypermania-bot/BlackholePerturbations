@@ -25,10 +25,10 @@ TeukolskyScalarPDE::TeukolskyScalarPDE(Param param_) : param(param_) {
     
   const Scalar h = (rast_max - rast_min) / (N - 1);
 
-  psi_lm_map = make_coupling_info_map(psi_lm_coupling_info_scalar, l_max);
-  dr_psi_lm_map = make_coupling_info_map(dr_psi_lm_coupling_info_scalar, l_max);
-  drdr_psi_lm_map = make_coupling_info_map(drdr_psi_lm_coupling_info_scalar, l_max);
-  dt_psi_lm_map = make_coupling_info_map(dt_psi_lm_coupling_info_scalar, l_max);
+  psi_lm_map = make_coupling_info_map(psi_lm_coupling_info_scalar, 0, l_max);
+  dr_psi_lm_map = make_coupling_info_map(dr_psi_lm_coupling_info_scalar, 0, l_max);
+  drdr_psi_lm_map = make_coupling_info_map(drdr_psi_lm_coupling_info_scalar, 0, l_max);
+  dt_psi_lm_map = make_coupling_info_map(dt_psi_lm_coupling_info_scalar, 0, l_max);
 
   auto a_hp = static_cast<HighPrecisionScalar>(a);
   auto M_hp = static_cast<HighPrecisionScalar>(M);
