@@ -41,8 +41,7 @@ struct CudaTeukolskyScalarPDE {
   typedef ComplexVector State;
   
   Param param;
-  // Vector V;
-  // std::function<Vector(const Scalar)> Q;
+  std::function<void(const State &, State &, const Scalar)> add_source;
   long long int grid_size;
   long long int lm_size;
 
@@ -55,6 +54,7 @@ struct CudaTeukolskyScalarPDE {
   std::vector<ComplexVector> coeffs;
   ComplexVector drdr_psi_lm;
   ComplexVector dr_psi_lm;
+  ComplexVector ko_psi_lm;
 
   // CUDA graph instances for evaluating the system ( used in operator() )
   std::map<std::pair<const void *, const void *>, cudaGraphExec_t> graph_exec_mapping;

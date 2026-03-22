@@ -27,6 +27,7 @@ struct TeukolskyScalarPDEParam {
   Scalar rast_min;
   Scalar rast_max;
   long long int N;
+  Scalar ko_epsilon;
 
   Scalar t_start;
   Scalar t_end;

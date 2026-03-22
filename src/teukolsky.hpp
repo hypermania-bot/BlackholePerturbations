@@ -53,6 +53,8 @@ namespace Teukolsky
   std::vector<ComplexVector> compute_coeffs_scalar(const HighPrecisionScalar a, const HighPrecisionScalar M, const HighPrecisionVector &r);
 
   void prepare_coeffs_scalar(std::vector<ComplexVector> &coeffs, const Scalar rast_min, const Scalar rast_max, const long long int N, const Scalar M, const Scalar a);
+
+  void prepare_r_beta(Vector &r_beta, const Scalar rast_min, const Scalar rast_max, const long long int N, const Scalar M, const Scalar a, const long long int beta);
 }
 
 #endif

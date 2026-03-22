@@ -21,6 +21,14 @@ namespace CUDAKernel {
   __global__
   void dr_complex_double_kernel(thrust::complex<double> * __restrict__ out, const thrust::complex<double> * __restrict__ in, const int grid_size, const double inv_h);
 
+  /*! \brief Compute 1D first order derivative from `in` and store to `out`.  */
+  __global__
+  void ko_complex_double_kernel(thrust::complex<double> * __restrict__ out, const thrust::complex<double> * __restrict__ in, const int grid_size, const double epsilon);
+
+  /*! \brief Compute 1D first order derivative from `in` and store to `out`.  */
+  __global__
+  void ko_and_copy_complex_double_kernel(thrust::complex<double> * __restrict__ out, const thrust::complex<double> * __restrict__ in1, const thrust::complex<double> * __restrict__ in2, const int grid_size, const double epsilon);
+
   /*!
     \brief Contains function pointers assigning quadratic terms on the RHS to LHS.
 

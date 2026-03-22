@@ -207,4 +207,26 @@ namespace Teukolsky
  
   }
 
+  void prepare_r_beta(Vector &r_beta, const Scalar rast_min, const Scalar rast_max, const long long int N, const Scalar M, const Scalar a, const long long int beta) {
+    auto a_hp = static_cast<HighPrecisionScalar>(a);
+    auto M_hp = static_cast<HighPrecisionScalar>(M);
+    auto rast_min_hp = static_cast<HighPrecisionScalar>(rast_min);
+    auto rast_max_hp = static_cast<HighPrecisionScalar>(rast_max);
+
+    const std::string r_hp_filename = Asset::to_hashed_filename("r_hp", rast_min, rast_max, N, M, a);
+    auto r_hp_loaded = read_from_file<Teukolsky::HighPrecisionVector>(r_hp_filename);
+    Teukolsky::HighPrecisionVector r_hp;
+    if(r_hp_loaded.has_value()){
+      r_hp = *r_hp_loaded;
+    } else {
+      run_and_measure_time("Computing r_hp", [&](void){
+	r_hp = compute_hp_r_vector(rast_min_hp, rast_max_hp, N, M_hp, a_hp);
+      });
+      write_to_file(r_hp, r_hp_filename);
+    }
+
+    r_beta = r_hp.pow(-beta).cast<double>();
+    
+  }
+  
 }

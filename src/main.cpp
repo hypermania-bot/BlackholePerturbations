@@ -5,6 +5,7 @@
 //#include <thread>
 #include <random>
 #include <optional>
+//#include <format>
 
 #include <Eigen/Dense>
 #include <boost/numeric/odeint.hpp>
@@ -29,6 +30,7 @@
 
 #include "teukolsky_scalar.hpp"
 #include "teukolsky_cubic_cuda.cuh"
+#include "teukolsky_source_cuda.cuh"
 
 #include "examples.hpp"
 #include "rsh.hpp"
@@ -85,8 +87,7 @@ int main(int argc, char **argv) {
   // return 0;
   // test_harmonic_mult();
 
-
-  auto run_simulation = [&](const long long int s, const double a_over_M, const double lambda, const std::string &dir) {
+  auto run_sourced_simulation = [&](const long long int s, const long long int beta, const long long int lm_source, const double a_over_M, const std::string &dir) {
     using namespace Eigen;
     using namespace boost::numeric::odeint;
     using namespace std::numbers;
@@ -96,8 +97,6 @@ int main(int argc, char **argv) {
     typedef Equation::Param Param;
     typedef Equation::State State;
 
-    // const std::string dir = "output/teukolsky_09/";
-    // const std::string dir = "output/teukolsky_a_01_lambda_01/";
     const std::string temporary_dir = "asset/";
     // const std::string temporary_dir = "/media/hypermania/Drive_001/QuasiNormalModes/asset/";
     prepare_directory_for_output(dir);
@@ -106,17 +105,361 @@ int main(int argc, char **argv) {
   
     Param param;
     param.s = s;
-    param.l_max = 1;
+    param.l_max = 5;
+    param.M = 0.5;
+    param.a = a_over_M * param.M;
+    param.lambda = 0;
+
+    param.rast_min = -500;
+    param.rast_max = 1000;
+    param.N = static_cast<long long int>((param.rast_max - param.rast_min) / 0.03);
+    // param.ko_epsilon = (std::llabs(s) == 2) ? 0.7 : 0.3; // Choose 0.3 for s=-1 and 0.7 for s=-2
+    param.ko_epsilon = 0.7;
+    
+    param.t_start = 0;
+    param.t_end = 1000;
+    param.t_interval = 0.5;
+    param.delta_t = 0.01;
+
+    save_param_for_Mathematica(param, dir);
+
+    TeukolskySourceParam source_param;
+    source_param.M = param.M;
+    source_param.a = param.a;
+    source_param.rast_min = param.rast_min;
+    source_param.rast_max = param.rast_max;
+    source_param.N = param.N;
+    source_param.l_max = param.l_max;
+
+    source_param.beta = beta;
+    // source_param.lm = 0;
+    // source_param.lm = (std::llabs(s) == 2) ? 8 : 3;  // Choose 3 for s=0,-1 and 8 for s=-2
+    source_param.lm = lm_source;
+    source_param.t_i = 10.0;
+    source_param.r_i = 10.0;
+    source_param.sigma = 0.5;
+    source_param.A = 100.0;
+    source_param.type = PowerLaw;
+    
+    prepare_directory_for_output(dir + "source/");
+    save_param_for_Mathematica(source_param, dir + "source/");
+    
+    CudaTeukolskySource source(source_param);    
+    Equation eqn(param);
+    eqn.add_source = source;
+
+    // auto stepper = runge_kutta_fehlberg78<State, double, State, double>();
+    auto stepper = runge_kutta_dopri5<State, double, State, double>();
+
+    const long long int rIdx = r_ast_to_i(param.rast_min, param.rast_max, param.N, 50.0);
+    auto recorder = ThrustRecorder(rIdx, eqn.lm_size, eqn.grid_size);
+    auto observer1 = DenseTransformAndRecordObserver(dir, recorder);
+    std::vector<double> times;
+    for(size_t i = 0; i <= 10; ++i){
+      times.push_back(0.0 + 50.0 * i);
+    }
+    auto observer2 = ApproximateTimeObserver(dir, times);
+    auto observer = ObserverPack(observer1, observer2);
+  
+    State state(2 * eqn.lm_size * eqn.grid_size);
+    ArrayXcd state_eigen(state.size());
+    state_eigen = 0;
+
+    copy_vector(state, state_eigen);
+
+
+  
+    // // Solve the equation.
+    run_and_measure_time("Solving equation",
+			 [&](){
+			   int num_steps = integrate_adaptive(stepper, std::ref(eqn), state, param.t_start, param.t_end, param.delta_t, std::ref(observer));
+			   std::cout << "total number of steps = " << num_steps << '\n';
+			 } );
+    write_to_file(state, dir + "final_state.dat");
+    observer.save();
+  };
+
+  // run_sourced_simulation(-2, 0, 8, 0, "output/teukolsky_sourced_s_-2_beta_0_lm_8_a_0_test_30/");
+  // run_sourced_simulation(2, 0, 8, 0, "output/teukolsky_sourced_s_2_beta_0_lm_8_a_0_test_500/");
+  // return 0;
+  
+  // run_sourced_simulation(-1, 0, 3, 0, "output/teukolsky_sourced_s_-1_beta_0_lm_3_a_0/");
+  // run_sourced_simulation(-1, 1, 3, 0, "output/teukolsky_sourced_s_-1_beta_1_lm_3_a_0/");
+  // run_sourced_simulation(-1, 2, 3, 0, "output/teukolsky_sourced_s_-1_beta_2_lm_3_a_0/");
+  
+  // run_sourced_simulation(-1, 0, 8, 0, "output/teukolsky_sourced_s_-1_beta_0_lm_8_a_0/");
+  // run_sourced_simulation(-1, 1, 8, 0, "output/teukolsky_sourced_s_-1_beta_1_lm_8_a_0/");
+  // run_sourced_simulation(-1, 2, 8, 0, "output/teukolsky_sourced_s_-1_beta_2_lm_8_a_0/");
+
+  // run_sourced_simulation(-1, 0, 15, 0, "output/teukolsky_sourced_s_-1_beta_0_lm_15_a_0/");
+  // run_sourced_simulation(-1, 1, 15, 0, "output/teukolsky_sourced_s_-1_beta_1_lm_15_a_0/");
+  // run_sourced_simulation(-1, 2, 15, 0, "output/teukolsky_sourced_s_-1_beta_2_lm_15_a_0/");
+  
+  // run_sourced_simulation(-1, 0, 3, 0.1, "output/teukolsky_sourced_s_-1_beta_0_lm_3_a_01/");
+  // run_sourced_simulation(-1, 1, 3, 0.1, "output/teukolsky_sourced_s_-1_beta_1_lm_3_a_01/");
+  // run_sourced_simulation(-1, 2, 3, 0.1, "output/teukolsky_sourced_s_-1_beta_2_lm_3_a_01/");
+  
+  // run_sourced_simulation(-1, 0, 8, 0.1, "output/teukolsky_sourced_s_-1_beta_0_lm_8_a_01/");
+  // run_sourced_simulation(-1, 1, 8, 0.1, "output/teukolsky_sourced_s_-1_beta_1_lm_8_a_01/");
+  // run_sourced_simulation(-1, 2, 8, 0.1, "output/teukolsky_sourced_s_-1_beta_2_lm_8_a_01/");
+
+  // run_sourced_simulation(-1, 0, 3, 0.2, "output/teukolsky_sourced_s_-1_beta_0_lm_3_a_02/");
+  // run_sourced_simulation(-1, 1, 3, 0.2, "output/teukolsky_sourced_s_-1_beta_1_lm_3_a_02/");
+  // run_sourced_simulation(-1, 2, 3, 0.2, "output/teukolsky_sourced_s_-1_beta_2_lm_3_a_02/");
+  
+  // run_sourced_simulation(-1, 0, 8, 0.2, "output/teukolsky_sourced_s_-1_beta_0_lm_8_a_02/");
+  // run_sourced_simulation(-1, 1, 8, 0.2, "output/teukolsky_sourced_s_-1_beta_1_lm_8_a_02/");
+  // run_sourced_simulation(-1, 2, 8, 0.2, "output/teukolsky_sourced_s_-1_beta_2_lm_8_a_02/");
+
+  // run_sourced_simulation(-1, 0, 3, 0.3, "output/teukolsky_sourced_s_-1_beta_0_lm_3_a_03/");
+  // run_sourced_simulation(-1, 1, 3, 0.3, "output/teukolsky_sourced_s_-1_beta_1_lm_3_a_03/");
+  // run_sourced_simulation(-1, 2, 3, 0.3, "output/teukolsky_sourced_s_-1_beta_2_lm_3_a_03/");
+  
+  // run_sourced_simulation(-1, 0, 8, 0.3, "output/teukolsky_sourced_s_-1_beta_0_lm_8_a_03/");
+  // run_sourced_simulation(-1, 1, 8, 0.3, "output/teukolsky_sourced_s_-1_beta_1_lm_8_a_03/");
+  // run_sourced_simulation(-1, 2, 8, 0.3, "output/teukolsky_sourced_s_-1_beta_2_lm_8_a_03/");
+
+  // run_sourced_simulation(-1, 0, 3, 0.4, "output/teukolsky_sourced_s_-1_beta_0_lm_3_a_04/");
+  // run_sourced_simulation(-1, 1, 3, 0.4, "output/teukolsky_sourced_s_-1_beta_1_lm_3_a_04/");
+  // run_sourced_simulation(-1, 2, 3, 0.4, "output/teukolsky_sourced_s_-1_beta_2_lm_3_a_04/");
+  
+  // run_sourced_simulation(-1, 0, 8, 0.4, "output/teukolsky_sourced_s_-1_beta_0_lm_8_a_04/");
+  // run_sourced_simulation(-1, 1, 8, 0.4, "output/teukolsky_sourced_s_-1_beta_1_lm_8_a_04/");
+  // run_sourced_simulation(-1, 2, 8, 0.4, "output/teukolsky_sourced_s_-1_beta_2_lm_8_a_04/");
+
+  // run_sourced_simulation(-1, 0, 3, 0.8, "output/teukolsky_sourced_s_-1_beta_0_lm_3_a_08/");
+  // run_sourced_simulation(-1, 1, 3, 0.8, "output/teukolsky_sourced_s_-1_beta_1_lm_3_a_08/");
+  // run_sourced_simulation(-1, 2, 3, 0.8, "output/teukolsky_sourced_s_-1_beta_2_lm_3_a_08/");
+  
+  // run_sourced_simulation(-1, 0, 8, 0.8, "output/teukolsky_sourced_s_-1_beta_0_lm_8_a_08/");
+  // run_sourced_simulation(-1, 1, 8, 0.8, "output/teukolsky_sourced_s_-1_beta_1_lm_8_a_08/");
+  // run_sourced_simulation(-1, 2, 8, 0.8, "output/teukolsky_sourced_s_-1_beta_2_lm_8_a_08/");
+
+
+
+  // run_sourced_simulation(-2, 0, 3, 0, "output/teukolsky_sourced_s_-2_beta_0_lm_3_a_0/");
+  // run_sourced_simulation(-2, 1, 3, 0, "output/teukolsky_sourced_s_-2_beta_1_lm_3_a_0/");
+  // run_sourced_simulation(-2, 2, 3, 0, "output/teukolsky_sourced_s_-2_beta_2_lm_3_a_0/");
+  
+  // run_sourced_simulation(-2, 0, 8, 0, "output/teukolsky_sourced_s_-2_beta_0_lm_8_a_0/");
+  // run_sourced_simulation(-2, 1, 8, 0, "output/teukolsky_sourced_s_-2_beta_1_lm_8_a_0/");
+  // run_sourced_simulation(-2, 2, 8, 0, "output/teukolsky_sourced_s_-2_beta_2_lm_8_a_0/");
+
+  // run_sourced_simulation(-2, 0, 15, 0, "output/teukolsky_sourced_s_-2_beta_0_lm_15_a_0/");
+  // run_sourced_simulation(-2, 1, 15, 0, "output/teukolsky_sourced_s_-2_beta_1_lm_15_a_0/");
+  // run_sourced_simulation(-2, 2, 15, 0, "output/teukolsky_sourced_s_-2_beta_2_lm_15_a_0/");
+  
+  // run_sourced_simulation(-2, 0, 3, 0.1, "output/teukolsky_sourced_s_-2_beta_0_lm_3_a_01/");
+  // run_sourced_simulation(-2, 1, 3, 0.1, "output/teukolsky_sourced_s_-2_beta_1_lm_3_a_01/");
+  // run_sourced_simulation(-2, 2, 3, 0.1, "output/teukolsky_sourced_s_-2_beta_2_lm_3_a_01/");
+  
+  // run_sourced_simulation(-2, 0, 8, 0.1, "output/teukolsky_sourced_s_-2_beta_0_lm_8_a_01/");
+  // run_sourced_simulation(-2, 1, 8, 0.1, "output/teukolsky_sourced_s_-2_beta_1_lm_8_a_01/");
+  // run_sourced_simulation(-2, 2, 8, 0.1, "output/teukolsky_sourced_s_-2_beta_2_lm_8_a_01/");
+
+  // run_sourced_simulation(-2, 0, 3, 0.2, "output/teukolsky_sourced_s_-2_beta_0_lm_3_a_02/");
+  // run_sourced_simulation(-2, 1, 3, 0.2, "output/teukolsky_sourced_s_-2_beta_1_lm_3_a_02/");
+  // run_sourced_simulation(-2, 2, 3, 0.2, "output/teukolsky_sourced_s_-2_beta_2_lm_3_a_02/");
+  
+  // run_sourced_simulation(-2, 0, 8, 0.2, "output/teukolsky_sourced_s_-2_beta_0_lm_8_a_02/");
+  // run_sourced_simulation(-2, 1, 8, 0.2, "output/teukolsky_sourced_s_-2_beta_1_lm_8_a_02/");
+  // run_sourced_simulation(-2, 2, 8, 0.2, "output/teukolsky_sourced_s_-2_beta_2_lm_8_a_02/");
+
+  // run_sourced_simulation(-2, 0, 3, 0.3, "output/teukolsky_sourced_s_-2_beta_0_lm_3_a_03/");
+  // run_sourced_simulation(-2, 1, 3, 0.3, "output/teukolsky_sourced_s_-2_beta_1_lm_3_a_03/");
+  // run_sourced_simulation(-2, 2, 3, 0.3, "output/teukolsky_sourced_s_-2_beta_2_lm_3_a_03/");
+  
+  // run_sourced_simulation(-2, 0, 8, 0.3, "output/teukolsky_sourced_s_-2_beta_0_lm_8_a_03/");
+  // run_sourced_simulation(-2, 1, 8, 0.3, "output/teukolsky_sourced_s_-2_beta_1_lm_8_a_03/");
+  // run_sourced_simulation(-2, 2, 8, 0.3, "output/teukolsky_sourced_s_-2_beta_2_lm_8_a_03/");
+
+  // run_sourced_simulation(-2, 0, 3, 0.4, "output/teukolsky_sourced_s_-2_beta_0_lm_3_a_04/");
+  // run_sourced_simulation(-2, 1, 3, 0.4, "output/teukolsky_sourced_s_-2_beta_1_lm_3_a_04/");
+  // run_sourced_simulation(-2, 2, 3, 0.4, "output/teukolsky_sourced_s_-2_beta_2_lm_3_a_04/");
+  
+  // run_sourced_simulation(-2, 0, 8, 0.4, "output/teukolsky_sourced_s_-2_beta_0_lm_8_a_04/");
+  // run_sourced_simulation(-2, 1, 8, 0.4, "output/teukolsky_sourced_s_-2_beta_1_lm_8_a_04/");
+  // run_sourced_simulation(-2, 2, 8, 0.4, "output/teukolsky_sourced_s_-2_beta_2_lm_8_a_04/");
+
+  // run_sourced_simulation(-2, 0, 8, 0.8, "output/teukolsky_sourced_s_-2_beta_0_lm_8_a_08/");
+  // run_sourced_simulation(-2, 1, 8, 0.8, "output/teukolsky_sourced_s_-2_beta_1_lm_8_a_08/");
+  // run_sourced_simulation(-2, 2, 8, 0.8, "output/teukolsky_sourced_s_-2_beta_2_lm_8_a_08/");
+
+  // run_sourced_simulation(0, 0, 15, 0, "output/teukolsky_sourced_s_0_beta_0_lm_15_a_0/");
+  // run_sourced_simulation(0, 1, 15, 0, "output/teukolsky_sourced_s_0_beta_1_lm_15_a_0/");
+  // run_sourced_simulation(0, 2, 15, 0, "output/teukolsky_sourced_s_0_beta_2_lm_15_a_0/");
+  
+
+  
+  // run_sourced_simulation(0, 0, 8, 0, "output/teukolsky_sourced_s_0_beta_0_lm_8_a_0/");
+  // run_sourced_simulation(0, 1, 8, 0, "output/teukolsky_sourced_s_0_beta_1_lm_8_a_0/");
+  // run_sourced_simulation(0, 2, 8, 0, "output/teukolsky_sourced_s_0_beta_2_lm_8_a_0/");
+  
+  // run_sourced_simulation(-1, 0, 8, 0, "output/teukolsky_sourced_s_-1_beta_0_lm_8_a_0/");
+  // run_sourced_simulation(-1, 1, 8, 0, "output/teukolsky_sourced_s_-1_beta_1_lm_8_a_0/");
+  // run_sourced_simulation(-1, 2, 8, 0, "output/teukolsky_sourced_s_-1_beta_2_lm_8_a_0/");
+  
+  // run_sourced_simulation(-2, 0, 8, 0, "output/teukolsky_sourced_s_-2_beta_0_lm_8_a_0/");
+  // run_sourced_simulation(-2, 1, 8, 0, "output/teukolsky_sourced_s_-2_beta_1_lm_8_a_0/");
+  // run_sourced_simulation(-2, 2, 8, 0, "output/teukolsky_sourced_s_-2_beta_2_lm_8_a_0/");
+  
+  // run_sourced_simulation(1, 0, 8, 0, "output/teukolsky_sourced_s_1_beta_0_lm_8_a_0/");
+  // run_sourced_simulation(1, 1, 8, 0, "output/teukolsky_sourced_s_1_beta_1_lm_8_a_0/");
+  // run_sourced_simulation(1, 2, 8, 0, "output/teukolsky_sourced_s_1_beta_2_lm_8_a_0/");
+  
+  // run_sourced_simulation(2, 0, 8, 0, "output/teukolsky_sourced_s_2_beta_0_lm_8_a_0/");
+  // run_sourced_simulation(2, 1, 8, 0, "output/teukolsky_sourced_s_2_beta_1_lm_8_a_0/");
+  // run_sourced_simulation(2, 2, 8, 0, "output/teukolsky_sourced_s_2_beta_2_lm_8_a_0/");
+
+  // run_sourced_simulation(2, 2, 8, 0, "output/teukolsky_sourced_s_2_beta_2_lm_8_a_0_test/");
+  // run_sourced_simulation(1, 2, 8, 0, "output/teukolsky_sourced_s_1_beta_2_lm_8_a_0_test/");
+
+  // run_sourced_simulation(1, 0, 8, 0.001, "output/teukolsky_sourced_s_1_beta_0_lm_8_a_0001/");
+  // run_sourced_simulation(1, 1, 8, 0.001, "output/teukolsky_sourced_s_1_beta_1_lm_8_a_0001/");
+  // run_sourced_simulation(1, 2, 8, 0.001, "output/teukolsky_sourced_s_1_beta_2_lm_8_a_0001/");
+  
+  // run_sourced_simulation(2, 0, 8, 0.001, "output/teukolsky_sourced_s_2_beta_0_lm_8_a_0001/");
+  // run_sourced_simulation(2, 1, 8, 0.001, "output/teukolsky_sourced_s_2_beta_1_lm_8_a_0001/");
+  // run_sourced_simulation(2, 2, 8, 0.001, "output/teukolsky_sourced_s_2_beta_2_lm_8_a_0001/");
+  
+
+  auto run_dirac_delta_simulation = [&](const long long int s, const long long int lm_source, const double a_over_M, const std::string &dir) {
+    using namespace Eigen;
+    using namespace boost::numeric::odeint;
+    using namespace std::numbers;
+    using std::array;
+  
+    typedef CudaTeukolskyScalarPDE Equation;
+    typedef Equation::Param Param;
+    typedef Equation::State State;
+
+    const std::string temporary_dir = "asset/";
+    // const std::string temporary_dir = "/media/hypermania/Drive_001/QuasiNormalModes/asset/";
+    prepare_directory_for_output(dir);
+    prepare_directory_for_output(temporary_dir);
+    Asset::set_asset_path(temporary_dir);
+  
+    Param param;
+    param.s = s;
+    param.l_max = 2;
+    param.M = 0.5;
+    param.a = a_over_M * param.M;
+    param.lambda = 0;
+
+    param.rast_min = -200;
+    param.rast_max = 600;
+    param.N = static_cast<long long int>((param.rast_max - param.rast_min) / 0.03);
+    // param.ko_epsilon = (std::llabs(s) == 2) ? 0.7 : 0.3; // Choose 0.3 for s=-1 and 0.7 for s=-2
+    param.ko_epsilon = 0.7;
+    
+    param.t_start = 0;
+    param.t_end = 400;
+    param.t_interval = 0.5;
+    param.delta_t = 0.01;
+
+    save_param_for_Mathematica(param, dir);
+
+    TeukolskySourceParam source_param;
+    source_param.M = param.M;
+    source_param.a = param.a;
+    source_param.rast_min = param.rast_min;
+    source_param.rast_max = param.rast_max;
+    source_param.N = param.N;
+    source_param.l_max = param.l_max;
+
+    // source_param.beta = beta;
+    source_param.lm = lm_source;
+    source_param.t_i = 10.0;
+    source_param.r_i = 200.0;
+    source_param.sigma = 0.5;
+    source_param.A = 100.0;
+    source_param.type = DiracDelta;
+    
+    prepare_directory_for_output(dir + "source/");
+    save_param_for_Mathematica(source_param, dir + "source/");
+    
+    CudaTeukolskySource source(source_param);    
+    Equation eqn(param);
+    eqn.add_source = source;
+
+    // auto stepper = runge_kutta_fehlberg78<State, double, State, double>();
+    auto stepper = runge_kutta_dopri5<State, double, State, double>();
+
+    const long long int rIdx = r_ast_to_i(param.rast_min, param.rast_max, param.N, 50.0);
+    auto recorder = ThrustRecorder(rIdx, eqn.lm_size, eqn.grid_size);
+    auto observer1 = DenseTransformAndRecordObserver(dir, recorder);
+    std::vector<double> times;
+    for(size_t i = 0; i <= 20; ++i){
+      times.push_back(0.0 + 20.0 * i);
+    }
+    auto observer2 = ApproximateTimeObserver(dir, times);
+    auto observer = ObserverPack(observer1, observer2);
+  
+    State state(2 * eqn.lm_size * eqn.grid_size);
+    ArrayXcd state_eigen(state.size());
+    state_eigen = 0;
+
+    copy_vector(state, state_eigen);
+
+
+  
+    // // Solve the equation.
+    run_and_measure_time("Solving equation",
+			 [&](){
+			   int num_steps = integrate_adaptive(stepper, std::ref(eqn), state, param.t_start, param.t_end, param.delta_t, std::ref(observer));
+			   std::cout << "total number of steps = " << num_steps << '\n';
+			 } );
+    write_to_file(state, dir + "final_state.dat");
+    observer.save();
+  };
+
+  // run_dirac_delta_simulation(-1, 3, 0, "output/teukolsky_dirac_s_-1_lm_3_a_0/");
+  // run_dirac_delta_simulation(-1, 8, 0, "output/teukolsky_dirac_s_-1_lm_8_a_0/");
+  // run_dirac_delta_simulation(-1, 15, 0, "output/teukolsky_dirac_s_-1_lm_15_a_0/");
+  // run_dirac_delta_simulation(-2, 8, 0, "output/teukolsky_dirac_s_-2_lm_8_a_0/");
+  // run_dirac_delta_simulation(-2, 15, 0, "output/teukolsky_dirac_s_-2_lm_15_a_0/");
+  
+  // run_dirac_delta_simulation(1, 3, 0, "output/teukolsky_dirac_s_1_lm_3_a_0/");
+  // run_dirac_delta_simulation(1, 8, 0, "output/teukolsky_dirac_s_1_lm_8_a_0/");
+  // run_dirac_delta_simulation(1, 15, 0, "output/teukolsky_dirac_s_1_lm_15_a_0/");
+  // run_dirac_delta_simulation(2, 8, 0, "output/teukolsky_dirac_s_2_lm_8_a_0/");
+  // run_dirac_delta_simulation(2, 15, 0, "output/teukolsky_dirac_s_2_lm_15_a_0/");
+
+  // run_dirac_delta_simulation(-2, 8, 0, "output/teukolsky_dirac_s_-2_lm_8_a_0/");
+  // run_dirac_delta_simulation(2, 8, 0, "output/teukolsky_dirac_s_2_lm_8_a_0/");
+  
+  // return 0;
+
+  
+  auto run_simulation = [&](const long long int s, const double a_over_M, const double lambda, const double ko_epsilon, const std::string &dir) {
+    using namespace Eigen;
+    using namespace boost::numeric::odeint;
+    using namespace std::numbers;
+    using std::array;
+  
+    typedef CudaTeukolskyScalarPDE Equation;
+    typedef Equation::Param Param;
+    typedef Equation::State State;
+
+    const std::string temporary_dir = "asset/";
+    prepare_directory_for_output(dir);
+    prepare_directory_for_output(temporary_dir);
+    Asset::set_asset_path(temporary_dir);
+  
+    Param param;
+    param.s = s;
+    param.l_max = 5;
     param.M = 0.5;
     param.a = a_over_M * param.M;
     param.lambda = lambda;
 
-    param.rast_min = -750;
-    param.rast_max = 1500;
+    param.rast_min = -500;
+    param.rast_max = 1000;
     param.N = static_cast<long long int>((param.rast_max - param.rast_min) / 0.03);
+    param.ko_epsilon = ko_epsilon; // 0.5;
   
     param.t_start = 0;
-    param.t_end = 1500;
+    param.t_end = 1000;
     param.t_interval = 0.5;
     param.delta_t = 0.01;
 
@@ -132,7 +475,7 @@ int main(int argc, char **argv) {
     auto observer1 = DenseTransformAndRecordObserver(dir, recorder);
     std::vector<double> times;
     for(size_t i = 0; i <= 10; ++i){
-      times.push_back(150.0 + 5.0 * i);
+      times.push_back(0.0 + 50.0 * i);
     }
     auto observer2 = ApproximateTimeObserver(dir, times);
     auto observer = ObserverPack(observer1, observer2);
@@ -167,6 +510,15 @@ int main(int argc, char **argv) {
     observer.save();
   };
 
+  run_simulation(0, 0.01, 0.1, 0, "output/teukolsky_a_001_lambda_01/");
+  run_simulation(0, 0.9, 0.01, 0, "output/teukolsky_a_09_lambda_001/");
+  
+  // run_simulation(-1, 0.1, 0, 0.6, "output/teukolsky_s_1_a_01_lambda_0_eps_06/");
+  // run_simulation(-1, 0.1, 0, 0.5, "output/teukolsky_s_1_a_01_lambda_0_eps_05/");
+  // run_simulation(-1, 0.1, 0, 0.4, "output/teukolsky_s_1_a_01_lambda_0_eps_04/");
+  // run_simulation(-1, 0.1, 0, 0.3, "output/teukolsky_s_1_a_01_lambda_0_eps_03/");
+  // run_simulation(-1, 0.1, 0, 0.2, "output/teukolsky_s_1_a_01_lambda_0_eps_02/");
+  
   // run_simulation(0, 0.01, 0.1, "output/teukolsky_a_001_lambda_01/");
   // run_simulation(0, 0.1, 0.001, "output/teukolsky_a_01_lambda_0001/");
   // run_simulation(0, 0.9, 0.001, "output/teukolsky_a_09_lambda_0001/");
@@ -174,21 +526,6 @@ int main(int argc, char **argv) {
   // run_simulation(1, 0, 0, "output/teukolsky_s_1_a_0_lambda_0/");
   // run_simulation(1, 0.5, 0, "output/teukolsky_s_1_a_05_lambda_0/");
   // run_simulation(0, 0.1, 0, "output/teukolsky_s_0_a_01_lambda_0/");
-  // run_simulation(0, 0.1, 0, "/media/hypermania/Drive_001/QuasiNormalModes/output/teukolsky_s_0_a_01_lambda_0/");
-  // run_simulation(1, 0.1, 0, "/media/hypermania/Drive_001/QuasiNormalModes/output/teukolsky_s_1_a_01_lambda_0_short_lmax_3/");
-
-  // run_simulation(1, 0.1, 0, "output/teukolsky_s_1_a_01_lambda_0_short/");
-  // run_simulation(2, 0.1, 0, "/media/hypermania/Drive_001/QuasiNormalModes/output/teukolsky_s_2_a_01_lambda_0/");
-  // run_simulation(2, 0.1, 0.1, "/media/hypermania/Drive_001/QuasiNormalModes/output/teukolsky_s_2_a_01_lambda_01/");
-  
-  // run_simulation(-1, 0.1, 0, "output/teukolsky_s_1_a_01_lambda_0_close/");
-  run_simulation(-1, 0, 0, "output/teukolsky_s_1_a_0_lambda_0_close/");
-  // run_simulation(0, 0.1, 0, "/media/hypermania/Drive_001/QuasiNormalModes/output/teukolsky_s_0_a_01_lambda_0_close/");
-  // run_simulation(-1, 0.1, 0.1, "/media/hypermania/Drive_001/QuasiNormalModes/output/teukolsky_s_1_a_01_lambda_01/");
-  // run_simulation(-2, 0.1, 0.1, "output/teukolsky_s_2_a_01_lambda_01/");
-  // run_simulation(-1, 0.1, 0.1, "output/teukolsky_s_1_a_01_lambda_01_fine/");
-  
-  // run_simulation(-2, 0.1, 0, "/media/hypermania/Drive_001/QuasiNormalModes/output/teukolsky_s_2_a_01_lambda_0/");
 
   return 0;
   

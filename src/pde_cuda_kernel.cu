@@ -59,6 +59,23 @@ void ko_complex_double_kernel(thrust::complex<double> * __restrict__ out, const 
 }
 
 __global__
+void ko_and_copy_complex_double_kernel(thrust::complex<double> * __restrict__ out, const thrust::complex<double> * __restrict__ in1, const thrust::complex<double> * __restrict__ in2, const int grid_size, const double epsilon)
+{
+  int i = blockIdx.x * blockDim.x + threadIdx.x;
+  if(i >= 2 && i <= grid_size-3) {
+    out[i] = in1[i] - ((epsilon)*(((0.062500000000000000000)*(in2[(-2)+(i)]))+(((-0.25000000000000000000)*(in2[(-1)+(i)]))+(((0.37500000000000000000)*(in2[i]))+(((-0.25000000000000000000)*(in2[(1)+(i)]))+((0.062500000000000000000)*(in2[(2)+(i)])))))));
+  } else if(i == 0) {
+    out[i] = in1[i] - ((epsilon)*(((0.062500000000000000000)*(in2[0]))+(((-0.25000000000000000000)*(in2[1]))+(((0.37500000000000000000)*(in2[2]))+(((-0.25000000000000000000)*(in2[3]))+((0.062500000000000000000)*(in2[4])))))));
+  } else if(i == 1) {
+    out[i] = in1[i] - ((epsilon)*(((0.062500000000000000000)*(in2[0]))+(((-0.25000000000000000000)*(in2[1]))+(((0.37500000000000000000)*(in2[2]))+(((-0.25000000000000000000)*(in2[3]))+((0.062500000000000000000)*(in2[4])))))));
+  } else if(i == grid_size-2) {
+    out[i] = in1[i] - ((epsilon)*(((0.062500000000000000000)*(in2[(-5)+(grid_size)]))+(((-0.25000000000000000000)*(in2[(-4)+(grid_size)]))+(((0.37500000000000000000)*(in2[(-3)+(grid_size)]))+(((-0.25000000000000000000)*(in2[(-2)+(grid_size)]))+((0.062500000000000000000)*(in2[(-1)+(grid_size)])))))));
+  } else if(i == grid_size-1) {
+    out[i] = in1[i] - ((epsilon)*(((0.062500000000000000000)*(in2[(-5)+(grid_size)]))+(((-0.25000000000000000000)*(in2[(-4)+(grid_size)]))+(((0.37500000000000000000)*(in2[(-3)+(grid_size)]))+(((-0.25000000000000000000)*(in2[(-2)+(grid_size)]))+((0.062500000000000000000)*(in2[(-1)+(grid_size)])))))));
+  }
+}
+
+__global__
 void assign_lhs_2terms_complex_double_kernel_0(thrust::complex<double> * __restrict__ lhs_ptr, const int grid_size)
 {
   int i = blockIdx.x * blockDim.x + threadIdx.x;

@@ -195,6 +195,7 @@ cudaGraph_t CudaTeukolskyScalarPDE::prepare_cuda_graph(const State &x, State &dx
   const Scalar rast_max = param.rast_max;
   const auto N = param.N;
   const Scalar h = (rast_max - rast_min) / (N - 1);
+  const Scalar ko_epsilon = param.ko_epsilon;
   
   // Prepare CUDA graph for operator()
   cudaGraph_t graph;
@@ -204,20 +205,13 @@ cudaGraph_t CudaTeukolskyScalarPDE::prepare_cuda_graph(const State &x, State &dx
 
   cudaGraphNode_t copy_time_derivative_node;
   std::vector<cudaGraphNode_t> compute_derivative_nodes(2 * lm_size);
+  if(ko_epsilon != 0){
+    compute_derivative_nodes.resize(3 * lm_size);
+  }
   cudaGraphNode_t empty_barrier_node;
   std::vector<cudaGraphNode_t> compute_dtdt_nodes(lm_size);
   
   // Add computational of derivatives into the graph
-
-  // Copy first order time derivative
-  const long long int dt_grid_begin = lm_size * grid_size;
-  err = cudaGraphAddMemcpyNode1D(&copy_time_derivative_node, graph, NULL, 0,
-				 (void *)thrust::raw_pointer_cast(dxdt.data()),
-				 (const void *)(thrust::raw_pointer_cast(x.data() + dt_grid_begin)),
-				 dt_grid_begin * sizeof(thrust::complex<double>),
-				 cudaMemcpyDeviceToDevice);
-
-  // std::cout << "(cudaGraphAddMemcpyNode1D) err = " << err << std::endl;
   
   // Compute first and second order spatial derivative  
   for(size_t lm = 0; lm < lm_size; ++lm){
@@ -268,6 +262,30 @@ cudaGraph_t CudaTeukolskyScalarPDE::prepare_cuda_graph(const State &x, State &dx
       err = cudaGraphAddKernelNode(&compute_derivative_nodes[lm_size + lm], graph, NULL, 0, &node_params);
       // std::cout << "(cudaGraphAddKernelNode) err = " << err << std::endl;
     }
+
+    // if(ko_epsilon != 0){
+    //   auto arg1 = thrust::raw_pointer_cast(ko_psi_lm.data() + lm * grid_size);
+    //   auto arg2 = thrust::raw_pointer_cast(x.data() + lm * grid_size);
+    //   int arg3 = grid_size;
+    //   double arg4 = ko_epsilon;
+
+    //   void *ptrs[4] = {(void *)&arg1, (void *)&arg2, (void *)&arg3, (void *)&arg4};
+    //   void **ptrs_casted = (void **)ptrs;
+    
+    //   const int threadsPerBlock = 256;
+    //   const int numBlocks = (grid_size + threadsPerBlock - 1) / threadsPerBlock;
+    
+    //   cudaKernelNodeParams node_params;
+    //   node_params.func = (void *)CUDAKernel::ko_complex_double_kernel;
+    //   node_params.gridDim = dim3(numBlocks);
+    //   node_params.blockDim = dim3(threadsPerBlock);
+    //   node_params.sharedMemBytes = 0;
+    //   node_params.kernelParams = ptrs_casted;
+    //   node_params.extra = NULL;
+    
+    //   err = cudaGraphAddKernelNode(&compute_derivative_nodes[2 * lm_size + lm], graph, NULL, 0, &node_params);
+    //   // std::cout << "(cudaGraphAddKernelNode) err = " << err << std::endl;
+    // }
   }
 
   // Barrier node
@@ -335,6 +353,48 @@ cudaGraph_t CudaTeukolskyScalarPDE::prepare_cuda_graph(const State &x, State &dx
     // std::cout << "(cudaGraphAddKernelNode) err = " << err << std::endl;
   }
 
+  
+
+  // Copy first order time derivative, possibly with Kreiss-Oliger correction
+  const long long int dt_grid_begin = lm_size * grid_size;  
+  if(ko_epsilon == 0){
+    err = cudaGraphAddMemcpyNode1D(&copy_time_derivative_node, graph, NULL, 0,
+				   (void *)thrust::raw_pointer_cast(dxdt.data()),
+				   (const void *)(thrust::raw_pointer_cast(x.data() + dt_grid_begin)),
+				   dt_grid_begin * sizeof(thrust::complex<double>),
+				   cudaMemcpyDeviceToDevice);
+
+    // std::cout << "(cudaGraphAddMemcpyNode1D) err = " << err << std::endl;
+  } else {
+    
+    for(size_t lm = 0; lm < lm_size; ++lm){
+
+      auto arg1 = thrust::raw_pointer_cast(dxdt.data() + lm * grid_size);
+      auto arg2 = thrust::raw_pointer_cast(x.data() + dt_grid_begin + lm * grid_size);
+      auto arg3 = thrust::raw_pointer_cast(x.data() + lm * grid_size);
+      int arg4 = grid_size;
+      double arg5 = ko_epsilon;
+
+      void *ptrs[5] = {(void *)&arg1, (void *)&arg2, (void *)&arg3, (void *)&arg4, (void *)&arg5};
+      void **ptrs_casted = (void **)ptrs;
+    
+      const int threadsPerBlock = 256;
+      const int numBlocks = (grid_size + threadsPerBlock - 1) / threadsPerBlock;
+    
+      cudaKernelNodeParams node_params;
+      node_params.func = (void *)CUDAKernel::ko_and_copy_complex_double_kernel;
+      node_params.gridDim = dim3(numBlocks);
+      node_params.blockDim = dim3(threadsPerBlock);
+      node_params.sharedMemBytes = 0;
+      node_params.kernelParams = ptrs_casted;
+      node_params.extra = NULL;
+    
+      err = cudaGraphAddKernelNode(&compute_derivative_nodes[2 * lm_size + lm], graph, NULL, 0, &node_params);
+      // std::cout << "(cudaGraphAddKernelNode) err = " << err << std::endl;
+    }
+  }
+
+  
   size_t numNodes;
   size_t numEdges;
   err = cudaGraphGetNodes(graph, NULL, &numNodes);
@@ -376,5 +436,9 @@ void CudaTeukolskyScalarPDE::operator()(const State &x, State &dxdt, const Scala
       cudaGraphDestroy(new_graph);
     }
     cudaGraphLaunch(lambda_graph_exec_mapping[key], 0);
+  }
+
+  if(add_source){
+    add_source(x, dxdt, t);
   }
 }
