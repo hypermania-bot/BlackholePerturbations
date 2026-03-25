@@ -4,14 +4,14 @@ My numerical tools for studying blackhole perturbations. They were used to produ
 Numerical functionalities implemented for [arXiv:2503.19967](https://arxiv.org/abs/2503.19967):
 
 1. The Regge-Wheeler (RW) equation for a single harmonic mode with a customizable source.
-2. The Regge-Wheeler (RW) equations for all real harmonics modes `l <= l_max`, coupled via a cubic self-interaction.
+2. The Regge-Wheeler (RW) equations for all real harmonics modes $` \ell \leq \ell_{\mathrm{max}} `$, coupled via a cubic self-interaction.
 
 Numerical functionalities implemented for [arXiv:2603.20379](https://arxiv.org/abs/2603.20379):
 
-1. The Teukosky equation (with change of variable $` \tilde{\psi} = (\Delta^s r) \psi `$) for all spherical harmonic modes `l <= l_max <= 6`. Mode-mode coupling coefficients (for spin-weights `-2 <= s <= 2` and Kerr parameters `M` and `a`) are automatically computed and included in the numerical evolution.
-2. Two optional sources for the Teukolsky equation, including one that decays like $` r^(-\beta) `$ and one that emulates a Dirac delta function $` \delta(r-r')\delta(t-t') `$.
+1. The Teukosky equation (with change of variable $` \tilde{\psi} = (\Delta^s r) \psi `$) for all spherical harmonic modes $` \ell \leq \ell_{\mathrm{max}} \leq 6 `$. Mode-mode coupling coefficients (for spin-weights $` -2 \leq s \leq 2 `$ and Kerr parameters $` M `$ and $` a `$) are automatically computed and included in the numerical evolution.
+2. Two optional sources for the Teukolsky equation, including one that decays like $` r^{-\beta} `$ and one that emulates a Dirac delta function $` \delta(r-r')\delta(t-t') `$.
 3. An effective source that corresponds to a $` \lambda \psi^2 `$ nonlinear term for a scalar field in Kerr spacetime.
-4. Artifical Kreiss-Oliger dissipation, which is required for stable numerical evolution when `s != 0`.
+4. Artifical Kreiss-Oliger dissipation, which is required for stable numerical evolution when $` s \neq 0 `$.
 
 
 
