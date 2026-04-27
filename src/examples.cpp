@@ -3,7 +3,8 @@
 #include <thread>
 
 #include <Eigen/Dense>
-#include <boost/numeric/odeint.hpp>
+#include <boost/numeric/odeint/integrate/integrate_adaptive.hpp>
+#include <boost/numeric/odeint/stepper/runge_kutta_fehlberg78.hpp>
 #include <boost/numeric/odeint/external/eigen/eigen.hpp>
 #include "odeint_eigen/eigen_operations.hpp"
 
@@ -236,4 +237,3 @@ void run_coupled_eqn(void) {
   observer.save();
 
 }
-

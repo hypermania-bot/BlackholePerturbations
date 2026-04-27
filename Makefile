@@ -38,6 +38,10 @@ ifeq ($(GENCODE_FLAGS),)
 # Generate SASS code for each SM architecture listed in $(SMS)
 $(foreach sm,$(SMS),$(eval GENCODE_FLAGS += -gencode arch=compute_$(sm),code=sm_$(sm)))
 endif
+empty :=
+space := $(empty) $(empty)
+comma := ,
+CUDA_ARCH_LIST := $(subst $(space),$(comma),$(strip $(foreach sm,$(SMS),$(sm)0)))
 
 
 
@@ -59,7 +63,7 @@ program_CXX_OBJS := ${program_CXX_SRCS:.cpp=.o}
 program_CXX_ASMS := ${program_CXX_SRCS:.cpp=.s}
 
 program_OBJS := $(program_C_OBJS) $(program_CXX_OBJS)
-program_INCLUDE_DIRS := "external"
+program_INCLUDE_DIRS := "src/compat" "external"
 program_LIBRARY_DIRS :=
 program_LIBRARIES := m dl quadmath # fftw3 
 
@@ -86,6 +90,7 @@ endif
 # Compiler flags
 CXXFLAGS += $(foreach includedir,$(program_INCLUDE_DIRS),-I$(includedir))
 CXXFLAGS += -std=c++20 -Wall -DEIGEN_DONT_PARALLELIZE -DEIGEN_NO_CUDA -ftemplate-depth=20000
+CXXFLAGS += -D__CUDA_ARCH_LIST__=$(CUDA_ARCH_LIST)
 #-fext-numeric-literals  	#-DEIGEN_HAS_CONSTEXPR=1 #-DEIGEN_NO_DEBUG
 CXXFLAGS += -march=alderlake -pthread
 #CXXFLAGS += -march=native -pthread

@@ -30,8 +30,11 @@ struct CubicScalarPDEParam {
 };
 
 
+template<long long int l_max, long long int lm_idx, bool done = (lm_idx >= (l_max + 1) * (l_max + 1))>
+struct CubicScalarPDEExpressionAccumulator;
+
 template<long long int l_max, long long int lm_idx>
-struct CubicScalarPDEExpressionAccumulator {
+struct CubicScalarPDEExpressionAccumulator<l_max, lm_idx, false> {
   long long int half_state_size;
   long long int grid_size;
   constexpr CubicScalarPDEExpressionAccumulator(const long long int half_state_size_, const long long int grid_size_) :
@@ -48,8 +51,8 @@ struct CubicScalarPDEExpressionAccumulator {
   }
 };
 
-template<long long int l_max>
-struct CubicScalarPDEExpressionAccumulator<l_max, (l_max + 1) * (l_max + 1)> {
+template<long long int l_max, long long int lm_idx>
+struct CubicScalarPDEExpressionAccumulator<l_max, lm_idx, true> {
   constexpr CubicScalarPDEExpressionAccumulator(const long long int half_state_size_, const long long int grid_size_) {}
   void exec(const Eigen::ArrayXd &x, Eigen::ArrayXd &dxdt, const Eigen::ArrayXd &V_lambda, const std::vector<Eigen::ArrayXd> &V_l) const {}
 };

@@ -8,7 +8,9 @@
 //#include <format>
 
 #include <Eigen/Dense>
-#include <boost/numeric/odeint.hpp>
+#include <boost/numeric/odeint/integrate/integrate_adaptive.hpp>
+#include <boost/numeric/odeint/stepper/runge_kutta_dopri5.hpp>
+#include <boost/numeric/odeint/stepper/runge_kutta_fehlberg78.hpp>
 #include <boost/numeric/odeint/external/eigen/eigen.hpp>
 #include "odeint_eigen/eigen_operations.hpp"
 
@@ -30,6 +32,7 @@
 
 #include "teukolsky_scalar.hpp"
 #include "teukolsky_cubic_cuda.cuh"
+#include "teukolsky_double_double_cuda.cuh"
 #include "teukolsky_source_cuda.cuh"
 
 #include "examples.hpp"

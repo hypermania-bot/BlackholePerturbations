@@ -12,6 +12,7 @@ Numerical functionalities implemented for [arXiv:2603.20379](https://arxiv.org/a
 2. Two optional sources for the Teukolsky equation, including one that decays like $` r^{-\beta} `$ and one that emulates a Dirac delta function $` \delta(r-r')\delta(t-t') `$.
 3. An effective source that corresponds to a $` \lambda \psi^2 `$ nonlinear term for a scalar field in Kerr spacetime.
 4. Artifical Kreiss-Oliger dissipation, which is required for stable numerical evolution when $` s \neq 0 `$.
+5. A CUDA double-double precision Teukolsky evolution path, exposed by `CudaTeukolskyScalarPDEDoubleDouble` and `CudaTeukolskyDoubleDoubleSource` in `src/teukolsky_double_double_cuda.cuh`. This backend keeps the evolved fields, derivative buffers, source data, and coupling coefficient storage in double-double complex form and provides fixed-step RK4 stepping through `rk4_step()` and `integrate_fixed_rk4()`.
 
 
 
@@ -39,5 +40,4 @@ Compiler requirement:
 The codebase also makes use of `boost` and `Eigen` library, which are included in `/external`.
 
 Compilation should be as easy as running `make` at the project directory. Note that the compilation could take a while.
-
 
