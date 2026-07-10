@@ -15,6 +15,7 @@
 #include "io.hpp"
 #include "observer.hpp"
 #include "regge_wheeler_precise.hpp"
+#include "teukolsky_precise.hpp"
 #include "cubic_scalar.hpp"
 
 #include "boost/type_index.hpp"
@@ -235,5 +236,91 @@ void run_coupled_eqn(void) {
   write_to_file(state, dir + "final_state.dat");
   observer.save();
 
+}
+
+
+/*! 
+  \brief Solve the Teukolsky equation in Schwarzschild using high precision CPU arithmetic.
+*/
+void run_teukolsky_precise_eqn(void) {
+  using namespace Eigen;
+  using namespace boost::numeric::odeint;
+  using boost::math::lambert_w0;
+  using boost::multiprecision::cpp_bin_float_100;
+  using namespace std::numbers;
+
+  typedef TeukolskyPDEPrecise Equation;
+  typedef TeukolskyPDEPreciseParam Param;
+  typedef Equation::Scalar Scalar;
+  typedef Equation::State State;
+  typedef Equation::Vector Vector;
+
+  auto run_simulation = [](const long long int l, const long long int s, const Scalar ko_epsilon)->void {
+    std::string format_string = "output/teukolsky_precise/l_%d_s_%d/";
+      
+    char dir_buffer[128];
+    sprintf(dir_buffer, format_string.data(), static_cast<int>(l), static_cast<int>(s));
+    const std::string dir(dir_buffer);
+    prepare_directory_for_output(dir);  
+  
+    const Scalar M = Scalar(1) / Scalar(2);
+
+    const Scalar r_min = -600;
+    const Scalar r_max =  1200;
+    const long long int N = static_cast<long long int>((r_max - r_min) / 0.03);
+
+    const Scalar t_start = 0;
+    const Scalar t_end = 1000;
+    const Scalar delta_t = 0.01;
+
+    Param param;
+    param.s = s;
+    param.l = l;
+    param.M = M;
+    param.r_min = r_min;
+    param.r_max = r_max;
+    param.N = N;
+    param.ko_epsilon = ko_epsilon;
+    param.t_start = t_start;
+    param.t_end = t_end;
+    param.t_interval = Scalar(1) / Scalar(2);
+    param.delta_t = delta_t;
+
+    save_param_for_Mathematica(param, dir);
+  
+    Equation eqn(param);
+  
+    auto stepper = runge_kutta_fehlberg78<State, Scalar, State, Scalar>();
+    
+    const long long int rIdx = r_ast_to_i(param.r_min.convert_to<double>(), param.r_max.convert_to<double>(), N, 50.0);
+    auto observer1 = FixedPositionObserver(dir, {rIdx, rIdx + (N+1)});
+    auto observer2 = ApproximateTimeObserver(dir, {50., 100., 150., 200., 250., 300., 350., 400., 450., 500., 550.});
+    auto observer = ObserverPack(observer1, observer2);
+
+    Vector r_ast = eqn.compute_r_ast_vector(r_min, r_max, N);
+    Vector r = eqn.compute_r_vector(r_min, r_max, N, Scalar(2) * M);
+      
+    const Scalar r_source = Scalar(50);
+    const Scalar sigma = Scalar(1) / Scalar(2);
+    const Scalar prefactor = pow(Scalar(2 * pi), Scalar(-0.5)) * (1 / sigma);
+
+    eqn.Q = [&](const Scalar t)->Vector{
+      return prefactor * exp(-(t - r_ast + r_source).abs2() / (Scalar(2) * sigma * sigma));
+    };
+      
+    Vector state = Vector::Zero(2 * (N+1));
+      
+    run_and_measure_time("Solving Teukolsky precise equation",
+			 [&](){
+			   int num_steps = integrate_adaptive(stepper, std::ref(eqn), state, t_start, t_end, delta_t, std::ref(observer));
+			   std::cout << "total number of steps = " << num_steps << '\n';
+			 } );
+    observer.save();
+  };
+
+  run_simulation(2, 0, Scalar(0));
+  run_simulation(2, 0, Scalar(0.1));
+  run_simulation(2, 1, Scalar(0));
+  run_simulation(2, 1, Scalar(0.1));
 }
 
