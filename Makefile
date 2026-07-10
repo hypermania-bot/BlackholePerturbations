@@ -87,7 +87,7 @@ endif
 CXXFLAGS += $(foreach includedir,$(program_INCLUDE_DIRS),-I$(includedir))
 CXXFLAGS += -std=c++20 -Wall -DEIGEN_DONT_PARALLELIZE -DEIGEN_NO_CUDA -ftemplate-depth=20000
 #-fext-numeric-literals  	#-DEIGEN_HAS_CONSTEXPR=1 #-DEIGEN_NO_DEBUG
-CXXFLAGS += -march=alderlake -pthread
+CXXFLAGS += -march=alderlake -pthread -fopenmp
 #CXXFLAGS += -march=native -pthread
 CXXFLAGS += -O3 -ffast-math
 #CXXFLAGS += -g -fno-omit-frame-pointer -fext-numeric-literals
