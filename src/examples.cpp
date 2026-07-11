@@ -241,6 +241,8 @@ void run_coupled_eqn(void) {
 
 /*! 
   \brief Solve the Teukolsky equation in Schwarzschild using high precision CPU arithmetic.
+  Runs production-quality simulations with OpenMP-parallel operator evaluation.
+  Saves time series at r_* = 50 (psi and Pi) and periodic snapshots.
 */
 void run_teukolsky_precise_eqn(void) {
   using namespace Eigen;
@@ -255,7 +257,7 @@ void run_teukolsky_precise_eqn(void) {
   typedef Equation::State State;
   typedef Equation::Vector Vector;
 
-  auto run_simulation = [](const long long int l, const long long int s, const Scalar ko_epsilon)->void {
+  auto run_simulation = [](const long long int l, const long long int s, const Scalar ko_epsilon, const Scalar t_end)->void {
     std::string format_string = "output/teukolsky_precise/l_%d_s_%d/";
       
     char dir_buffer[128];
@@ -265,12 +267,11 @@ void run_teukolsky_precise_eqn(void) {
   
     const Scalar M = Scalar(1) / Scalar(2);
 
-    const Scalar r_min = -600;
-    const Scalar r_max =  1200;
-    const long long int N = static_cast<long long int>((r_max - r_min) / 0.03);
+    const Scalar r_min = -750;
+    const Scalar r_max =  1500;
+    const long long int N = static_cast<long long int>((r_max - r_min) / 0.15);
 
     const Scalar t_start = 0;
-    const Scalar t_end = 1000;
     const Scalar delta_t = 0.01;
 
     Param param;
@@ -294,18 +295,30 @@ void run_teukolsky_precise_eqn(void) {
     
     const long long int rIdx = r_ast_to_i(param.r_min.convert_to<double>(), param.r_max.convert_to<double>(), N, 50.0);
     auto observer1 = FixedPositionObserver(dir, {rIdx, rIdx + (N+1)});
-    auto observer2 = ApproximateTimeObserver(dir, {50., 100., 150., 200., 250., 300., 350., 400., 450., 500., 550.});
+
+    // Snapshots every 50 time units
+    std::vector<double> snap_times;
+    int n_snaps = static_cast<int>(static_cast<double>(t_end) / 50.0 + 1);
+    for(int i = 0; i < n_snaps; ++i) snap_times.push_back(50.0 * i);
+    auto observer2 = ApproximateTimeObserver(dir, snap_times);
     auto observer = ObserverPack(observer1, observer2);
 
+    // Outgoing Gaussian source at r_* = 50
     Vector r_ast = eqn.compute_r_ast_vector(r_min, r_max, N);
-    Vector r = eqn.compute_r_vector(r_min, r_max, N, Scalar(2) * M);
       
     const Scalar r_source = Scalar(50);
     const Scalar sigma = Scalar(1) / Scalar(2);
-    const Scalar prefactor = pow(Scalar(2 * pi), Scalar(-0.5)) * (1 / sigma);
+    const Scalar pf = pow(Scalar(2 * pi), Scalar(-0.5)) / sigma;
+    const Scalar denom = Scalar(2) * sigma * sigma;
 
     eqn.Q = [&](const Scalar t)->Vector{
-      return prefactor * exp(-(t - r_ast + r_source).abs2() / (Scalar(2) * sigma * sigma));
+      Vector result(N+1);
+#pragma omp parallel for schedule(static)
+      for(long long int i = 0; i <= N; ++i) {
+        Scalar arg = t - r_ast[i] + r_source;
+        result[i] = pf * boost::multiprecision::exp(-arg * arg / denom);
+      }
+      return result;
     };
       
     Vector state = Vector::Zero(2 * (N+1));
@@ -318,9 +331,11 @@ void run_teukolsky_precise_eqn(void) {
     observer.save();
   };
 
-  run_simulation(2, 0, Scalar(0));
-  run_simulation(2, 0, Scalar(0.1));
-  run_simulation(2, 1, Scalar(0));
-  run_simulation(2, 1, Scalar(0.1));
+  // Low-ℓ tail runs
+  run_simulation(1, -1, Scalar("0.5"), Scalar(500));
+  run_simulation(2, -1, Scalar("0.5"), Scalar(500));
+  run_simulation(3, -1, Scalar("0.5"), Scalar(500));
+  run_simulation(2, -2, Scalar("0.7"), Scalar(500));
+  run_simulation(3, -2, Scalar("0.7"), Scalar(500));
 }
 
